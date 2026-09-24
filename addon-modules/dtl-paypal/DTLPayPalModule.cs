@@ -34,10 +34,11 @@ using log4net;
 using Nini.Config;
 using OpenMetaverse;
 using OpenSim.Framework;
-using OpenSim.Framework.Communications;
+using OpenSim.Framework.Servers;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Server.Base;
+using OpenSim.Services.Interfaces;
 using Nwc.XmlRpc;
 
 using Mono.Addins; // I hate you Mono.Addins
@@ -91,7 +92,7 @@ namespace DeepThink.PayPal
                 foreach (Scene sc in m_scenes)
                 {
                     List<ScenePresence> avs =
-                        sc.GetAvatars().FindAll(
+                        sc.GetScenePresences().FindAll(
                             x =>
                             (x.UUID == e.sender && x.IsChildAgent == false)
                             );
@@ -182,9 +183,21 @@ namespace DeepThink.PayPal
                         m_log.Error("[DTL PayPal] Unable to find Object bought! UUID = " + transaction.ObjectID);
                         return;
                     }
-                    s.PerformObjectBuy(s.SceneContents.GetControllingClient(transaction.From),
+                    ScenePresence buyerPresence = s.GetScenePresence(transaction.From);
+                    if (buyerPresence == null)
+                    {
+                        m_log.Error("[DTL PayPal] Unable to find buyer! UUID = " + transaction.From);
+                        return;
+                    }
+                    IBuySellModule buySellModule = s.RequestModuleInterface<IBuySellModule>();
+                    if (buySellModule == null)
+                    {
+                        m_log.Error("[DTL PayPal] No IBuySellModule available to complete purchase.");
+                        return;
+                    }
+                    buySellModule.BuyObject(buyerPresence.ControllingClient,
                                        transaction.InternalPurchaseFolderID, part.LocalId,
-                                       transaction.InternalPurchaseType);
+                                       transaction.InternalPurchaseType, transaction.Amount);
                 }
             }
             else
@@ -301,7 +314,9 @@ namespace DeepThink.PayPal
                 return reply;
             }
 
-            Dictionary<string, string> postvals = ServerUtils.ParseQueryString((string) request["body"]);
+            Dictionary<string, string> postvals = new Dictionary<string, string>();
+            foreach (KeyValuePair<string, object> kvp in ServerUtils.ParseQueryString((string) request["body"]))
+                postvals[kvp.Key] = kvp.Value?.ToString();
             string originalPost = (string) request["body"];
 
             string modifiedPost = originalPost + "&cmd=_notify-validate";
@@ -475,7 +490,7 @@ namespace DeepThink.PayPal
                 foreach (Scene sc in m_scenes)
                 {
                     List<ScenePresence> avs =
-                        sc.GetAvatars().FindAll(
+                        sc.GetScenePresences().FindAll(
                             x =>
                             (x.UUID == agentID && x.IsChildAgent == false)
                             );
@@ -543,7 +558,7 @@ namespace DeepThink.PayPal
         static void OnMoneyBalanceRequest(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
         {
             const int returnfunds = 1000000;
-            client.SendMoneyBalance(TransactionID, true, new byte[0], returnfunds);
+            client.SendMoneyBalance(TransactionID, true, Array.Empty<byte>(), returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
         }
 
         #endregion
@@ -601,7 +616,8 @@ namespace DeepThink.PayPal
                 return;
             }
 
-            CommunicationsManager communicationsManager = m_scenes[0].CommsManager;
+            IUserAccountService userAccountService = m_scenes[0].UserAccountService;
+            UUID scopeID = m_scenes[0].RegionInfo.ScopeID;
 
             // This aborts at the slightest provocation
             // We realise this may be inconvenient for you,
@@ -621,12 +637,12 @@ namespace DeepThink.PayPal
 
                 m_log.Debug("[DTL PayPal] Looking up UUID for " + user);
                 string[] username = user.Split(new[] { ' ' }, 2);
-                UserProfileData upd = communicationsManager.UserService.GetUserProfile(username[0], username[1]);
+                UserAccount upd = userAccountService.GetUserAccount(scopeID, username[0], username[1]);
 
                 if (upd != null)
                 {
 
-                    m_log.Debug("[DTL PayPal] Found, " + user + " = " + upd.ID);
+                    m_log.Debug("[DTL PayPal] Found, " + user + " = " + upd.PrincipalID);
                     string email = users.GetString(user);
 
                     if (string.IsNullOrEmpty(email))
@@ -643,9 +659,9 @@ namespace DeepThink.PayPal
                         // See comment above.
                     }
 
-                    m_usersemail[upd.ID] = email;
+                    m_usersemail[upd.PrincipalID] = email;
                 }
-                else // UserProfileData was null
+                else // UserAccount was null
                 {
                     m_log.Error("[DTL PayPal] Error, User Profile not found for " + user +
                                 ". Check the spelling and/or any associated grid services. Aborting.");
@@ -668,8 +684,9 @@ namespace DeepThink.PayPal
 
         #region Implementation of IMoneyModule
 
-        public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount)
+        public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount, UUID txn, out string reason)
         {
+            reason = String.Empty;
             return false; // Objects cant give PP Money. (in theory it's doable however, if the user is in the sim.)
         }
 
@@ -683,88 +700,49 @@ namespace DeepThink.PayPal
         // size.
         //
         // This is 1 Million cents.
-        public int GetBalance(IClientAPI client)
+        public int GetBalance(UUID agentID)
         {
             return 1000000;
         }
 
-        public void ApplyUploadCharge(UUID agentID)
+        public int UploadCharge
+        {
+            get { return 0; }
+        }
+
+        public int GroupCreationCharge
+        {
+            get { return 0; }
+        }
+
+        public void ApplyUploadCharge(UUID agentID, int amount, string text)
         {
             // N/A
         }
 
-        public bool UploadCovered(IClientAPI client)
+        public bool UploadCovered(UUID agentID, int amount)
         {
             return true;
         }
 
-        public void ApplyGroupCreationCharge(UUID agentID)
+        public bool AmountCovered(UUID agentID, int amount)
+        {
+            return true;
+        }
+
+        public void ApplyCharge(UUID agentID, int amount, MoneyTransactionType type, string extraData = "")
         {
             // N/A
         }
 
-        public bool GroupCreationCovered(IClientAPI client)
-        {
-            return true;
-        }
-
-        public bool AmountCovered(IClientAPI client, int amount)
-        {
-            return true;
-        }
-
-        public void ApplyCharge(UUID agentID, int amount, string text)
+        public void MoveMoney(UUID fromUser, UUID toUser, int amount, string text)
         {
             // N/A
         }
 
-        
-
-
-        /// <summary>
-        /// Old Pre-1.2 Linden Lab Economy Data
-        /// Completely irrelevant now.
-        /// (hooray for 7 year old cruft!)
-        /// 
-        /// We should probably hard-code this
-        /// into LLClientView TBH. -Adam
-        /// </summary>
-        /// <returns></returns>
-        public EconomyData GetEconomyData()
+        public bool MoveMoney(UUID fromUser, UUID toUser, int amount, MoneyTransactionType type, string text)
         {
-            const int ObjectCapacity = 45000;
-            const int ObjectCount = 0;
-            const int PriceEnergyUnit = 0;
-            const int PriceGroupCreate = 0;
-            const int PriceObjectClaim = 0;
-            const float PriceObjectRent = 0f;
-            const float PriceObjectScaleFactor = 0f;
-            const int PriceParcelClaim = 0;
-            const float PriceParcelClaimFactor = 0f;
-            const int PriceParcelRent = 0;
-            const int PricePublicObjectDecay = 0;
-            const int PricePublicObjectDelete = 0;
-            const int PriceRentLight = 0;
-            const int PriceUpload = 0;
-            const int TeleportMinPrice = 0;
-
-            EconomyData edata = new EconomyData();
-            edata.ObjectCapacity = ObjectCapacity;
-            edata.ObjectCount = ObjectCount;
-            edata.PriceEnergyUnit = PriceEnergyUnit;
-            edata.PriceGroupCreate = PriceGroupCreate;
-            edata.PriceObjectClaim = PriceObjectClaim;
-            edata.PriceObjectRent = PriceObjectRent;
-            edata.PriceObjectScaleFactor = PriceObjectScaleFactor;
-            edata.PriceParcelClaim = PriceParcelClaim;
-            edata.PriceParcelClaimFactor = PriceParcelClaimFactor;
-            edata.PriceParcelRent = PriceParcelRent;
-            edata.PricePublicObjectDecay = PricePublicObjectDecay;
-            edata.PricePublicObjectDelete = PricePublicObjectDelete;
-            edata.PriceRentLight = PriceRentLight;
-            edata.PriceUpload = PriceUpload;
-            edata.TeleportMinPrice = TeleportMinPrice;
-            return edata;
+            return true;
         }
 
         #endregion
