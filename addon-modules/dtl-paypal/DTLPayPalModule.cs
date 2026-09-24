@@ -253,14 +253,20 @@ namespace DeepThink.PayPal
                          "&charset=" + HttpUtility.UrlEncode("UTF-8") +
                          "";
 
+            // HTML-encode values that can contain arbitrary user-supplied text (an in-world object's own
+            // description, an ini-configured seller email) before substituting them into the served HTML page -
+            // ported from Mod-PayPal (github.com/SnoopyPfeffer/Mod-PayPal), which fixes a stored-XSS gap the
+            // original 2009-2010 DTL-PayPal had via raw, unescaped string substitution. {BILLINGLINK} is
+            // deliberately NOT HTML-encoded here - it's a URL whose own query parameters are already
+            // HttpUtility.UrlEncode'd above, and it needs to remain a valid href value, not further-escaped text.
             Dictionary<string,string> replacements = new Dictionary<string, string>();
-            replacements.Add("{ITEM}", txn.Description);
-            replacements.Add("{AMOUNT}", ConvertAmountToCurrency(txn.Amount).ToString());
-            replacements.Add("{AMOUNTOS}", txn.Amount.ToString());
+            replacements.Add("{ITEM}", HttpUtility.HtmlEncode(txn.Description));
+            replacements.Add("{AMOUNT}", HttpUtility.HtmlEncode(ConvertAmountToCurrency(txn.Amount).ToString()));
+            replacements.Add("{AMOUNTOS}", HttpUtility.HtmlEncode(txn.Amount.ToString()));
             replacements.Add("{CURRENCYCODE}", "USD");
             replacements.Add("{BILLINGLINK}", url);
-            replacements.Add("{OBJECTID}", txn.ObjectID.ToString());
-            replacements.Add("{SELLEREMAIL}", txn.SellersEmail);
+            replacements.Add("{OBJECTID}", HttpUtility.HtmlEncode(txn.ObjectID.ToString()));
+            replacements.Add("{SELLEREMAIL}", HttpUtility.HtmlEncode(txn.SellersEmail));
 
             
 
@@ -386,9 +392,27 @@ namespace DeepThink.PayPal
                     txn = m_transactionsInProgress[txnID];
                 }
 
-                // Check user paid correctly...
+                // Verify the payment actually went to the intended seller's PayPal account, not just that SOME
+                // payment matching this transaction ID/amount/currency was confirmed. Without this check, a
+                // malformed or spoofed IPN naming the correct item_number/mc_gross/mc_currency could still
+                // confirm a transaction as paid even if the money was routed to a different PayPal address than
+                // the seller actually configured - ported from Mod-PayPal (github.com/SnoopyPfeffer/Mod-PayPal),
+                // a real security gap the original 2009-2010 DTL-PayPal never checked.
+                if (!postvals.TryGetValue("business", out string businessEmail) ||
+                    string.IsNullOrEmpty(businessEmail) ||
+                    businessEmail.ToLower() != txn.SellersEmail.ToLower())
+                {
+                    m_log.Error("[DTL PayPal] IPN 'business' (receiver) email did not match the expected seller (" +
+                                txn.SellersEmail + "). Aborting.");
+                    debugStringDict(postvals);
+                    return reply;
+                }
+
+                // Check user paid correctly... epsilon-tolerant rather than exact equality, since decimal
+                // rounding on either side of the currency conversion can otherwise cause false-negative aborts
+                // on a genuinely correct payment - ported from Mod-PayPal.
                 Decimal amountPaid = Decimal.Parse(postvals["mc_gross"]);
-                if(ConvertAmountToCurrency(txn.Amount) != amountPaid)
+                if (Math.Abs(ConvertAmountToCurrency(txn.Amount) - amountPaid) > (Decimal) 0.001)
                 {
                     m_log.Error("[DTL PayPal] Expected payment was " + ConvertAmountToCurrency(txn.Amount) +
                                 " but recieved " + amountPaid + " " + postvals["mc_currency"] + " instead. Aborting.");
