@@ -139,5 +139,9 @@ namespace DeepThink.PayPal
         public readonly UUID ObjectID;
 
         public const string CurrencyCode = "USD";
+
+        /// <summary>UTC time this transaction was created - used to expire abandoned transactions (a buyer who
+        /// never completes PayPal's checkout) so a locked object/land doesn't stay locked forever.</summary>
+        public readonly DateTime CreatedAtUtc = DateTime.UtcNow;
     }
 }

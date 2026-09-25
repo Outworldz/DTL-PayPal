@@ -40,6 +40,10 @@ economymodule = PayPal
 Enabled = true
 AllowGridEmails = false
 AllowGroups = false
+; Optional: reject a payment/purchase up front (with a clear message) if it's below this many US dollars,
+; instead of letting the buyer hit a confusing error on PayPal's own checkout page for amounts too small to
+; cover PayPal's transaction fees. 0 (the default) means no minimum is enforced.
+MinimumAmount = 0
 
 [PayPal Users]
 User Name=paypal@email.com
@@ -77,3 +81,10 @@ only activate when BOTH "economymodule = PayPal" AND "[PayPal] Enabled =
 true" are set; if you only set [PayPal] Enabled and leave economymodule
 unset or pointing elsewhere, PayPal will log that it was not selected and
 stay inactive.
+
+Transaction locking:
+While an object has a PayPal payment/purchase in progress (buyer sent to
+PayPal's checkout, IPN not yet received), a second buy/pay attempt on that
+same object is rejected with an in-viewer message rather than starting a
+second concurrent transaction. If a buyer never completes PayPal's checkout,
+the lock is automatically released after 5 minutes.

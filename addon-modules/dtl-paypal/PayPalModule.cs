@@ -73,13 +73,70 @@ namespace DeepThink.PayPal
         // the object owner's - ported from Mod-PayPal.
         private bool m_allowGroups;
 
+        // Feature gap flagged by Fred while writing the manual: a sale amount too small to cover PayPal's own
+        // transaction fees produces a confusing/misleading error on PayPal's own checkout page instead of a clear
+        // one. Rejecting too-small amounts up front (in cents, matching PayPalTransaction.Amount/salePrice's own
+        // unit) with our own clear message avoids that. 0 (the default) means no minimum is enforced.
+        private int m_minimumAmountCents;
+
         private IConfigSource m_config;
 
         private readonly List<Scene> m_scenes = new List<Scene>();
 
         private readonly Dictionary<UUID,PayPalTransaction> m_transactionsInProgress = new Dictionary<UUID, PayPalTransaction>();
 
-        #region PayPal Currency 
+        // How long an object/land item stays locked against a new PayPal transaction while a previous one is still
+        // in flight, before it's treated as abandoned (buyer never completed PayPal's checkout) and released.
+        // There was previously no cleanup at all for an abandoned transaction - the entry would sit in
+        // m_transactionsInProgress forever, and (once locking was added) would have locked its object permanently.
+        private static readonly TimeSpan TransactionLockTimeout = TimeSpan.FromMinutes(5);
+
+        /// <summary>
+        /// Locking for PayPal transactions while buying land or original objects (feature gap flagged by Fred while
+        /// writing the manual): without this, a second buy/pay attempt on an object that already has a PayPal
+        /// transaction in flight would create a SECOND concurrent transaction against the same object, and whichever
+        /// IPN callback lands second could deliver/pay out twice for one item, or deliver to the wrong buyer.
+        /// Returns true (and rejects the new attempt) if objectID already has a non-expired transaction in progress;
+        /// as a side effect, also prunes any expired (abandoned) transactions it encounters for any object, so a
+        /// buyer who never completes checkout doesn't lock that item forever.
+        /// </summary>
+        private bool IsObjectLocked(UUID objectID)
+        {
+            if (objectID == UUID.Zero)
+                return false; // User-to-user payments (no ObjectID) are never locked against each other.
+
+            lock (m_transactionsInProgress)
+            {
+                List<UUID> expired = null;
+                bool locked = false;
+
+                foreach (KeyValuePair<UUID, PayPalTransaction> kvp in m_transactionsInProgress)
+                {
+                    if (DateTime.UtcNow - kvp.Value.CreatedAtUtc > TransactionLockTimeout)
+                    {
+                        (expired ??= new List<UUID>()).Add(kvp.Key);
+                        continue;
+                    }
+
+                    if (kvp.Value.ObjectID == objectID)
+                        locked = true;
+                }
+
+                if (expired != null)
+                {
+                    foreach (UUID txId in expired)
+                    {
+                        m_log.Warn("[PayPal] Transaction " + txId + " abandoned (no IPN within " +
+                                   TransactionLockTimeout.TotalMinutes + " minutes) - releasing its lock.");
+                        m_transactionsInProgress.Remove(txId);
+                    }
+                }
+
+                return locked;
+            }
+        }
+
+        #region PayPal Currency
 
         /// <summary>
         /// 
@@ -148,6 +205,22 @@ namespace DeepThink.PayPal
                     return;
                 }
 
+                if (IsObjectLocked(e.receiver))
+                {
+                    m_log.Warn("[PayPal] Object " + e.receiver + " already has a PayPal transaction in progress. Rejecting.");
+                    user.SendAlertMessage("This item already has a PayPal payment in progress from another transaction. Please try again shortly.");
+                    return;
+                }
+
+                if (m_minimumAmountCents > 0 && e.amount < m_minimumAmountCents)
+                {
+                    m_log.Warn("[PayPal] Amount " + ConvertAmountToCurrency(e.amount) + " is below the configured minimum of " +
+                               ConvertAmountToCurrency(m_minimumAmountCents) + ". Rejecting.");
+                    user.SendAlertMessage("This amount is too small for a PayPal payment (minimum is " +
+                                          ConvertAmountToCurrency(m_minimumAmountCents) + " " + PayPalTransaction.CurrencyCode + ").");
+                    return;
+                }
+
                 txn = new PayPalTransaction(e.sender, sop.OwnerID, sopEmail, e.amount,
                                             scene, e.receiver, e.description + "T:" + e.transactiontype, PayPalTransaction.InternalTransactionType.Payment);
             }
@@ -157,6 +230,15 @@ namespace DeepThink.PayPal
                 if (!TryGetReceiverEmail(e.receiver, UUID.Zero, out string receiverEmail))
                 {
                     m_log.Warn("[PayPal] No PayPal receiver email found for " + e.receiver + ". Aborting transaction.");
+                    return;
+                }
+
+                if (m_minimumAmountCents > 0 && e.amount < m_minimumAmountCents)
+                {
+                    m_log.Warn("[PayPal] Amount " + ConvertAmountToCurrency(e.amount) + " is below the configured minimum of " +
+                               ConvertAmountToCurrency(m_minimumAmountCents) + ". Rejecting.");
+                    user.SendAlertMessage("This amount is too small for a PayPal payment (minimum is " +
+                                          ConvertAmountToCurrency(m_minimumAmountCents) + " " + PayPalTransaction.CurrencyCode + ").");
                     return;
                 }
 
@@ -645,6 +727,22 @@ namespace DeepThink.PayPal
                 return;
             }
 
+            if (IsObjectLocked(sop.UUID))
+            {
+                m_log.Warn("[PayPal] Object " + sop.UUID + " already has a PayPal transaction in progress. Rejecting.");
+                user.SendAlertMessage("This item already has a PayPal payment in progress from another transaction. Please try again shortly.");
+                return;
+            }
+
+            if (m_minimumAmountCents > 0 && salePrice < m_minimumAmountCents)
+            {
+                m_log.Warn("[PayPal] Amount " + ConvertAmountToCurrency(salePrice) + " is below the configured minimum of " +
+                           ConvertAmountToCurrency(m_minimumAmountCents) + ". Rejecting.");
+                user.SendAlertMessage("This amount is too small for a PayPal payment (minimum is " +
+                                      ConvertAmountToCurrency(m_minimumAmountCents) + " " + PayPalTransaction.CurrencyCode + ").");
+                return;
+            }
+
             PayPalTransaction txn = new PayPalTransaction(agentID, sop.OwnerID, sopEmail, salePrice,
                                                           scene, sop.UUID,
                                                           "Item Purchase - " + sop.Name + " (" + saleType + ")",
@@ -769,6 +867,11 @@ namespace DeepThink.PayPal
 
             m_allowGridEmails = config.GetBoolean("AllowGridEmails", false);
             m_allowGroups = config.GetBoolean("AllowGroups", false);
+
+            // MinimumAmount is configured in dollars (matching PayPalURL/AllowGridEmails' human-readable style);
+            // internally everything is tracked in cents (see ConvertAmountToCurrency), so convert once here.
+            float minimumAmountDollars = config.GetFloat("MinimumAmount", 0);
+            m_minimumAmountCents = (int)Math.Round(minimumAmountDollars * 100);
 
             m_log.Warn("[PayPal] Loaded.");
 
