@@ -839,8 +839,13 @@ namespace DeepThink.PayPal
             }
 
             // Add HTTP Handlers (user, then PP-IPN)
-            MainServer.Instance.AddHTTPHandler("/dtlpp/", PayPalUserPage);
-            MainServer.Instance.AddHTTPHandler("/dtlppipn/", PayPalIPN);
+            // BaseHttpServer.CleanSearchPath() unconditionally strips the trailing slash from every incoming
+            // request path before matching against m_HTTPHandlers' keys via StartsWith - registering these WITH
+            // a trailing slash (the original bug here) meant "/dtlpp".StartsWith("/dtlpp/") was always false,
+            // so the handler could never match any real request and every payment confirmation 404'd. Gloebit's
+            // own handlers (e.g. "/gloebit/auth_complete") are registered without a trailing slash - match that.
+            MainServer.Instance.AddHTTPHandler("/dtlpp", PayPalUserPage);
+            MainServer.Instance.AddHTTPHandler("/dtlppipn", PayPalIPN);
 
             // XMLRPC Handlers for Standalone
             MainServer.Instance.AddXmlRPCHandler("getCurrencyQuote", quote_func);
