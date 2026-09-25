@@ -33,18 +33,32 @@ via PayPal IPN of the payment - and will process the original request.
 Configuring this module:
 Add the following sections to your OpenSim.ini file
 
-[DTL PayPal]
+[PayPal]
 Enabled = true
+AllowGridEmails = false
+AllowGroups = false
 
-[DTL PayPal Users]
+[PayPal Users]
 User Name=paypal@email.com
 Other User=another.paypal@email.com
 ...
 etc
 ...
 
+[PayPal Groups]
+a683cc8a-a5cc-4c40-87bc-ebcfbcfb1456=mygroup.account@yahoo.com
+...
+etc
+...
+
 How the PayPal Users section is formatted:
-One line per user, this should be the avatar name. The email address is the 
-primary email address used for the PayPal account that their funds will be 
-recieved by. Users not listed in this section will not be able to recieve 
-funds (however any user can send them.)
+One line per user, this should be the avatar name. The email address is the
+primary email address used for the PayPal account that their funds will be
+recieved by. Users not listed in this section will not be able to recieve
+funds (however any user can send them.) If AllowGridEmails is true, a user's
+own grid profile email is used as a fallback when they have no explicit entry
+here.
+
+How the PayPal Groups section is formatted (only used when AllowGroups is
+true): one line per group, keyed by the group's UUID, mapping to the PayPal
+receiver email that group-owned objects pay out to.

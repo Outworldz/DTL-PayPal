@@ -27,7 +27,7 @@ using System.Text.RegularExpressions;
 
 namespace DeepThink.PayPal
 {
-    public static class DTLPayPalHelpers
+    public static class PayPalHelpers
     {
         /// <summary>
         /// method for determining is the user provided a valid email address

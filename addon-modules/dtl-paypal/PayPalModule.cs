@@ -43,13 +43,13 @@ using Nwc.XmlRpc;
 
 using Mono.Addins; // I hate you Mono.Addins
 
-[assembly: Addin("DtlPayPal","0.1")]
+[assembly: Addin("PayPal","0.1")]
 [assembly: AddinDependency("OpenSim","0.5")]
 
 namespace DeepThink.PayPal
 {
     [Extension(Path="/OpenSim/RegionModules",NodeName="RegionModule")]
-    public class DTLPayPalModule : ISharedRegionModule, IMoneyModule
+    public class PayPalModule : ISharedRegionModule, IMoneyModule
     {
         private string m_ppurl = "www.paypal.com"; // Change to www.sandbox.paypal.com for testing.
 
@@ -77,7 +77,7 @@ namespace DeepThink.PayPal
 
         private readonly Dictionary<UUID,PayPalTransaction> m_transactionsInProgress = new Dictionary<UUID, PayPalTransaction>();
 
-        #region DTL Currency - PayPal 
+        #region PayPal Currency 
 
         /// <summary>
         /// 
@@ -110,7 +110,7 @@ namespace DeepThink.PayPal
                     {
                         if(avs.Count > 1)
                         {
-                            m_log.Warn("[DTL PayPal] Multiple avatars with same UUID! Aborting transaction.");
+                            m_log.Warn("[PayPal] Multiple avatars with same UUID! Aborting transaction.");
                             return;
                         }
 
@@ -124,7 +124,7 @@ namespace DeepThink.PayPal
 
             if(scene == null || user == null)
             {
-                m_log.Warn("[DTL PayPal] Unable to find scene or user! Aborting transaction.");
+                m_log.Warn("[PayPal] Unable to find scene or user! Aborting transaction.");
                 return;
             }
 
@@ -136,13 +136,13 @@ namespace DeepThink.PayPal
                 SceneObjectPart sop = scene.GetSceneObjectPart(e.receiver);
                 if (sop == null)
                 {
-                    m_log.Warn("[DTL PayPal] Unable to find SceneObjectPart that was paid. Aborting transaction.");
+                    m_log.Warn("[PayPal] Unable to find SceneObjectPart that was paid. Aborting transaction.");
                     return;
                 }
 
                 if (!TryGetReceiverEmail(sop.OwnerID, sop.GroupID, out string sopEmail))
                 {
-                    m_log.Warn("[DTL PayPal] No PayPal receiver email found for owner " + sop.OwnerID + ". Aborting transaction.");
+                    m_log.Warn("[PayPal] No PayPal receiver email found for owner " + sop.OwnerID + ". Aborting transaction.");
                     return;
                 }
 
@@ -154,7 +154,7 @@ namespace DeepThink.PayPal
                 // Payment to a user.
                 if (!TryGetReceiverEmail(e.receiver, UUID.Zero, out string receiverEmail))
                 {
-                    m_log.Warn("[DTL PayPal] No PayPal receiver email found for " + e.receiver + ". Aborting transaction.");
+                    m_log.Warn("[PayPal] No PayPal receiver email found for " + e.receiver + ". Aborting transaction.");
                     return;
                 }
 
@@ -168,7 +168,7 @@ namespace DeepThink.PayPal
 
             string baseUrl = m_scenes[0].RegionInfo.ExternalHostName + ":" + m_scenes[0].RegionInfo.HttpPort;
 
-            user.SendLoadURL("DTL PayPal", txn.ObjectID, txn.To, false, "Confirm payment?",
+            user.SendLoadURL("PayPal", txn.ObjectID, txn.To, false, "Confirm payment?",
                              "http://" + baseUrl + "/dtlpp/?txn=" + txn.TxID);
         }
 
@@ -193,7 +193,7 @@ namespace DeepThink.PayPal
             {
                 if (transaction.ObjectID == UUID.Zero)
                 {
-                    m_log.Error("[DTL PayPal] Unable to find Object bought! UUID Zero.");
+                    m_log.Error("[PayPal] Unable to find Object bought! UUID Zero.");
                 }
                 else
                 {
@@ -201,19 +201,19 @@ namespace DeepThink.PayPal
                     SceneObjectPart part = s.GetSceneObjectPart(transaction.ObjectID);
                     if (part == null)
                     {
-                        m_log.Error("[DTL PayPal] Unable to find Object bought! UUID = " + transaction.ObjectID);
+                        m_log.Error("[PayPal] Unable to find Object bought! UUID = " + transaction.ObjectID);
                         return;
                     }
                     ScenePresence buyerPresence = s.GetScenePresence(transaction.From);
                     if (buyerPresence == null)
                     {
-                        m_log.Error("[DTL PayPal] Unable to find buyer! UUID = " + transaction.From);
+                        m_log.Error("[PayPal] Unable to find buyer! UUID = " + transaction.From);
                         return;
                     }
                     IBuySellModule buySellModule = s.RequestModuleInterface<IBuySellModule>();
                     if (buySellModule == null)
                     {
-                        m_log.Error("[DTL PayPal] No IBuySellModule available to complete purchase.");
+                        m_log.Error("[PayPal] No IBuySellModule available to complete purchase.");
                         return;
                     }
                     buySellModule.BuyObject(buyerPresence.ControllingClient,
@@ -223,7 +223,7 @@ namespace DeepThink.PayPal
             }
             else
             {
-                m_log.Error("[DTL PayPal] Unknown Internal Transaction Type.");
+                m_log.Error("[PayPal] Unknown Internal Transaction Type.");
                 return;
             }
             // Cleanup.
@@ -255,7 +255,7 @@ namespace DeepThink.PayPal
             if (m_allowGridEmails)
             {
                 UserAccount account = m_scenes[0].UserAccountService.GetUserAccount(m_scenes[0].RegionInfo.ScopeID, ownerID);
-                if (account != null && DTLPayPalHelpers.IsValidEmail(account.Email))
+                if (account != null && PayPalHelpers.IsValidEmail(account.Email))
                 {
                     email = account.Email;
                     return true;
@@ -266,7 +266,7 @@ namespace DeepThink.PayPal
             return false;
         }
 
-        public Hashtable DtlUserPage(Hashtable request)
+        public Hashtable PayPalUserPage(Hashtable request)
         {
             UUID txnID = new UUID((string) request["txn"]);
 
@@ -324,12 +324,12 @@ namespace DeepThink.PayPal
 
             try
             {
-                template = File.ReadAllText("dtl-paypal-template.htm");
+                template = File.ReadAllText("paypal-template.htm");
             }
             catch (IOException)
             {
-                template = "Error: dtl-paypal-template.htm does not exist.";
-                m_log.Error("[DTL PayPal] Unable to load template file.");
+                template = "Error: paypal-template.htm does not exist.";
+                m_log.Error("[PayPal] Unable to load template file.");
             }
 
             foreach (KeyValuePair<string, string> pair in replacements)
@@ -350,11 +350,11 @@ namespace DeepThink.PayPal
         {
             foreach (KeyValuePair<string, string> str in strs)
             {
-                m_log.Info("[DTL PayPal] '" + str.Key + "' = '" + str.Value + "'");
+                m_log.Info("[PayPal] '" + str.Key + "' = '" + str.Value + "'");
             }
         }
 
-        public Hashtable DtlIPN(Hashtable request)
+        public Hashtable PayPalIPN(Hashtable request)
         {
             Hashtable reply = new Hashtable();
 
@@ -365,7 +365,7 @@ namespace DeepThink.PayPal
 
             if (!m_active)
             {
-                m_log.Error("[DTL PayPal] Recieved IPN request, but module is disabled. Aborting.");
+                m_log.Error("[PayPal] Recieved IPN request, but module is disabled. Aborting.");
                 reply["str_response_string"] = "IPN Not processed. Module is not enabled.";
                 return reply;
             }
@@ -396,14 +396,14 @@ namespace DeepThink.PayPal
 
             if (httpWebResponse.StatusCode != HttpStatusCode.OK)
             {
-                m_log.Error("[DTL PayPal] IPN Status code != 200. Aborting.");
+                m_log.Error("[PayPal] IPN Status code != 200. Aborting.");
                 debugStringDict(postvals);
                 return reply;
             }
 
             if (!response.Contains("VERIFIED"))
             {
-                m_log.Error("[DTL PayPal] IPN was NOT verified. Aborting.");
+                m_log.Error("[PayPal] IPN was NOT verified. Aborting.");
                 debugStringDict(postvals);
                 return reply;
             }
@@ -413,14 +413,14 @@ namespace DeepThink.PayPal
             {
                 if (postvals["payment_status"] != "Completed")
                 {
-                    m_log.Error("[DTL PayPal] Transaction not confirmed. Aborting.");
+                    m_log.Error("[PayPal] Transaction not confirmed. Aborting.");
                     debugStringDict(postvals);
                     return reply;
                 }
 
                 if (postvals["mc_currency"].ToUpper() != "USD")
                 {
-                    m_log.Error("[DTL PayPal] Payment was made in an incorrect currency (" + postvals["mc_currency"] +
+                    m_log.Error("[PayPal] Payment was made in an incorrect currency (" + postvals["mc_currency"] +
                                 "). Aborting.");
                     debugStringDict(postvals);
                     return reply;
@@ -434,7 +434,7 @@ namespace DeepThink.PayPal
                 {
                     if (!m_transactionsInProgress.ContainsKey(txnID))
                     {
-                        m_log.Error("[DTL PayPal] Recieved IPN request for Payment that is not in progress. Aborting.");
+                        m_log.Error("[PayPal] Recieved IPN request for Payment that is not in progress. Aborting.");
                         debugStringDict(postvals);
                         return reply;
                     }
@@ -452,7 +452,7 @@ namespace DeepThink.PayPal
                     string.IsNullOrEmpty(businessEmail) ||
                     businessEmail.ToLower() != txn.SellersEmail.ToLower())
                 {
-                    m_log.Error("[DTL PayPal] IPN 'business' (receiver) email did not match the expected seller (" +
+                    m_log.Error("[PayPal] IPN 'business' (receiver) email did not match the expected seller (" +
                                 txn.SellersEmail + "). Aborting.");
                     debugStringDict(postvals);
                     return reply;
@@ -464,7 +464,7 @@ namespace DeepThink.PayPal
                 Decimal amountPaid = Decimal.Parse(postvals["mc_gross"]);
                 if (Math.Abs(ConvertAmountToCurrency(txn.Amount) - amountPaid) > (Decimal) 0.001)
                 {
-                    m_log.Error("[DTL PayPal] Expected payment was " + ConvertAmountToCurrency(txn.Amount) +
+                    m_log.Error("[PayPal] Expected payment was " + ConvertAmountToCurrency(txn.Amount) +
                                 " but recieved " + amountPaid + " " + postvals["mc_currency"] + " instead. Aborting.");
                     debugStringDict(postvals);
                     return reply;
@@ -476,7 +476,7 @@ namespace DeepThink.PayPal
             }
             catch (KeyNotFoundException)
             {
-                m_log.Error("[DTL PayPal] Recieved badly formatted IPN notice. Aborting.");
+                m_log.Error("[PayPal] Recieved badly formatted IPN notice. Aborting.");
                 debugStringDict(postvals);
                 return reply;
             }
@@ -502,7 +502,7 @@ namespace DeepThink.PayPal
 
         public void Initialise(IConfigSource source)
         {
-            m_log.Info("[DTL PayPal] Initialising.");
+            m_log.Info("[PayPal] Initialising.");
             m_config = source;
         }
 
@@ -513,7 +513,7 @@ namespace DeepThink.PayPal
 
         public void AddRegion(Scene scene)
         {
-            m_log.Info("[DTL PayPal] Found Scene.");
+            m_log.Info("[PayPal] Found Scene.");
 
             lock (m_scenes)
                 m_scenes.Add(scene);
@@ -573,7 +573,7 @@ namespace DeepThink.PayPal
                     {
                         if (avs.Count > 1)
                         {
-                            m_log.Warn("[DTL PayPal] Multiple avatars with same UUID! Aborting transaction.");
+                            m_log.Warn("[PayPal] Multiple avatars with same UUID! Aborting transaction.");
                             return;
                         }
 
@@ -587,20 +587,20 @@ namespace DeepThink.PayPal
 
             if (scene == null || user == null)
             {
-                m_log.Warn("[DTL PayPal] Unable to find scene or user! Aborting transaction.");
+                m_log.Warn("[PayPal] Unable to find scene or user! Aborting transaction.");
                 return;
             }
 
             SceneObjectPart sop = scene.GetSceneObjectPart(localID);
             if (sop == null)
             {
-                m_log.Warn("[DTL PayPal] Unable to find SceneObjectPart that was paid. Aborting transaction.");
+                m_log.Warn("[PayPal] Unable to find SceneObjectPart that was paid. Aborting transaction.");
                 return;
             }
 
             if (!TryGetReceiverEmail(sop.OwnerID, sop.GroupID, out string sopEmail))
             {
-                m_log.Warn("[DTL PayPal] No PayPal receiver email found for owner " + sop.OwnerID + ". Aborting transaction.");
+                m_log.Warn("[PayPal] No PayPal receiver email found for owner " + sop.OwnerID + ". Aborting transaction.");
                 return;
             }
 
@@ -616,7 +616,7 @@ namespace DeepThink.PayPal
 
             string baseUrl = m_scenes[0].RegionInfo.ExternalHostName + ":" + m_scenes[0].RegionInfo.HttpPort;
 
-            user.SendLoadURL("DTL PayPal", txn.ObjectID, txn.To, false, "Confirm purchase?",
+            user.SendLoadURL("PayPal", txn.ObjectID, txn.To, false, "Confirm purchase?",
                              "http://" + baseUrl + "/dtlpp/?txn=" + txn.TxID);
         }
 
@@ -668,7 +668,7 @@ namespace DeepThink.PayPal
 
             if (null == config)
             {
-                m_log.Info("[DTL PayPal] No configuration specified. Skipping.");
+                m_log.Info("[PayPal] No configuration specified. Skipping.");
                 return;
             }
 
@@ -676,14 +676,14 @@ namespace DeepThink.PayPal
 
             if(!config.GetBoolean("Enabled",false))
             {
-                m_log.Info("[DTL PayPal] Not enabled.");
+                m_log.Info("[PayPal] Not enabled.");
                 return;
             }
 
             m_allowGridEmails = config.GetBoolean("AllowGridEmails", false);
             m_allowGroups = config.GetBoolean("AllowGroups", false);
 
-            m_log.Warn("[DTL PayPal] Loaded.");
+            m_log.Warn("[PayPal] Loaded.");
 
 
             m_enabled = true;
@@ -695,7 +695,7 @@ namespace DeepThink.PayPal
 
             if (null == users)
             {
-                m_log.Warn("[DTL PayPal] No users specified, skipping load.");
+                m_log.Warn("[PayPal] No users specified, skipping load.");
             }
             else
             {
@@ -712,32 +712,32 @@ namespace DeepThink.PayPal
                     UUID tmp;
                     if(UUID.TryParse(user,out tmp))
                     {
-                        m_log.Debug("[DTL PayPal] User is UUID, skipping lookup...");
+                        m_log.Debug("[PayPal] User is UUID, skipping lookup...");
                         string email = users.GetString(user);
                         m_usersemail[tmp] = email;
                         continue;
                     }
 
-                    m_log.Debug("[DTL PayPal] Looking up UUID for " + user);
+                    m_log.Debug("[PayPal] Looking up UUID for " + user);
                     string[] username = user.Split(new[] { ' ' }, 2);
                     UserAccount upd = userAccountService.GetUserAccount(scopeID, username[0], username[1]);
 
                     if (upd != null)
                     {
 
-                        m_log.Debug("[DTL PayPal] Found, " + user + " = " + upd.PrincipalID);
+                        m_log.Debug("[PayPal] Found, " + user + " = " + upd.PrincipalID);
                         string email = users.GetString(user);
 
                         if (string.IsNullOrEmpty(email))
                         {
-                            m_log.Error("[DTL PayPal] PayPal email address not set for " + user +
+                            m_log.Error("[PayPal] PayPal email address not set for " + user +
                                         " in [PayPal Users] config section. Skipping.");
                             // Did abort here, but since the users are being added to the list regardless...
                         }
 
-                        if (!DTLPayPalHelpers.IsValidEmail(email))
+                        if (!PayPalHelpers.IsValidEmail(email))
                         {
-                            m_log.Error("[DTL PayPal] PayPal email address not valid for " + user +
+                            m_log.Error("[PayPal] PayPal email address not valid for " + user +
                                         " in [PayPal Users] config section. Skipping.");
                             // See comment above.
                         }
@@ -746,7 +746,7 @@ namespace DeepThink.PayPal
                     }
                     else // UserAccount was null
                     {
-                        m_log.Error("[DTL PayPal] Error, User Profile not found for " + user +
+                        m_log.Error("[PayPal] Error, User Profile not found for " + user +
                                     ". Check the spelling and/or any associated grid services. Aborting.");
                         return;
                     }
@@ -759,7 +759,7 @@ namespace DeepThink.PayPal
 
                 if (null == groups)
                 {
-                    m_log.Warn("[DTL PayPal] AllowGroups is enabled but no [PayPal Groups] section found, skipping load.");
+                    m_log.Warn("[PayPal] AllowGroups is enabled but no [PayPal Groups] section found, skipping load.");
                 }
                 else
                 {
@@ -770,15 +770,15 @@ namespace DeepThink.PayPal
                     {
                         if (!UUID.TryParse(group, out UUID groupID))
                         {
-                            m_log.Error("[DTL PayPal] '" + group + "' in [PayPal Groups] is not a valid group UUID. Skipping.");
+                            m_log.Error("[PayPal] '" + group + "' in [PayPal Groups] is not a valid group UUID. Skipping.");
                             continue;
                         }
 
                         string email = groups.GetString(group);
 
-                        if (string.IsNullOrEmpty(email) || !DTLPayPalHelpers.IsValidEmail(email))
+                        if (string.IsNullOrEmpty(email) || !PayPalHelpers.IsValidEmail(email))
                         {
-                            m_log.Error("[DTL PayPal] PayPal email address not valid for group " + group +
+                            m_log.Error("[PayPal] PayPal email address not valid for group " + group +
                                         " in [PayPal Groups] config section. Skipping.");
                             continue;
                         }
@@ -789,8 +789,8 @@ namespace DeepThink.PayPal
             }
 
             // Add HTTP Handlers (user, then PP-IPN)
-            MainServer.Instance.AddHTTPHandler("/dtlpp/", DtlUserPage);
-            MainServer.Instance.AddHTTPHandler("/dtlppipn/", DtlIPN);
+            MainServer.Instance.AddHTTPHandler("/dtlpp/", PayPalUserPage);
+            MainServer.Instance.AddHTTPHandler("/dtlppipn/", PayPalIPN);
 
             // XMLRPC Handlers for Standalone
             MainServer.Instance.AddXmlRPCHandler("getCurrencyQuote", quote_func);
