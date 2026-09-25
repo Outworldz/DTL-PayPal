@@ -295,8 +295,8 @@ namespace DeepThink.PayPal
                          "&amount=" + HttpUtility.UrlEncode(ConvertAmountToCurrency(txn.Amount).ToString()) +
                          "&page_style=" + HttpUtility.UrlEncode("Paypal") +
                          "&no_shipping=" + HttpUtility.UrlEncode("1") +
-                         "&return=" + HttpUtility.UrlEncode("http://" + baseUrl + "/") + // TODO: Add in a return page
-                         "&cancel_return=" + HttpUtility.UrlEncode("http://" + baseUrl + "/") + // TODO: Add in a cancel page
+                         "&return=" + HttpUtility.UrlEncode("http://" + baseUrl + "/dtlpp-return") +
+                         "&cancel_return=" + HttpUtility.UrlEncode("http://" + baseUrl + "/dtlpp-cancel") +
                          "&notify_url=" + HttpUtility.UrlEncode("http://" + baseUrl + "/dtlppipn/") +
                          "&no_note=" + HttpUtility.UrlEncode("1") +
                          "&currency_code=" + HttpUtility.UrlEncode("USD") +
@@ -345,6 +345,43 @@ namespace DeepThink.PayPal
             reply["str_response_string"] = template;
             reply["content_type"] = "text/html";
 
+            return reply;
+        }
+
+        // Feature gap flagged by Fred while writing the manual: PayPal's own hosted checkout page redirects the
+        // buyer's browser back here via &return=/&cancel_return= after they complete or cancel payment on PayPal's
+        // site - the original 2009-2010 DTL-PayPal pointed both at a bare region root URL with no real handler
+        // (// TODO: Add in a return page / // TODO: Add in a cancel page, left unfinished for over a decade),
+        // which 404'd. These two simple pages replace that. Note the ACTUAL money confirmation/delivery still
+        // happens via PayPalIPN (a separate server-to-server callback PayPal makes independently of the buyer's
+        // browser) - these pages are purely a friendlier landing screen for the buyer, not part of the payment
+        // logic itself.
+        public Hashtable PayPalReturnPage(Hashtable request)
+        {
+            Hashtable reply = new Hashtable();
+            reply["int_response_code"] = 200;
+            reply["str_response_string"] =
+                "<html><head><title>Payment Complete</title></head><body>" +
+                "<h1>Thank you!</h1>" +
+                "<p>Your PayPal payment has been submitted. It may take a few moments for the item or funds to " +
+                "arrive in-world once PayPal confirms the transaction.</p>" +
+                "<p>You may close this window and return to the viewer.</p>" +
+                "</body></html>";
+            reply["content_type"] = "text/html";
+            return reply;
+        }
+
+        public Hashtable PayPalCancelPage(Hashtable request)
+        {
+            Hashtable reply = new Hashtable();
+            reply["int_response_code"] = 200;
+            reply["str_response_string"] =
+                "<html><head><title>Payment Cancelled</title></head><body>" +
+                "<h1>Payment Cancelled</h1>" +
+                "<p>Your PayPal payment was not completed. No funds were transferred and no item was delivered.</p>" +
+                "<p>You may close this window and return to the viewer.</p>" +
+                "</body></html>";
+            reply["content_type"] = "text/html";
             return reply;
         }
 
@@ -852,6 +889,8 @@ namespace DeepThink.PayPal
             // own handlers (e.g. "/gloebit/auth_complete") are registered without a trailing slash - match that.
             MainServer.Instance.AddHTTPHandler("/dtlpp", PayPalUserPage);
             MainServer.Instance.AddHTTPHandler("/dtlppipn", PayPalIPN);
+            MainServer.Instance.AddHTTPHandler("/dtlpp-return", PayPalReturnPage);
+            MainServer.Instance.AddHTTPHandler("/dtlpp-cancel", PayPalCancelPage);
 
             // XMLRPC Handlers for Standalone
             MainServer.Instance.AddXmlRPCHandler("getCurrencyQuote", quote_func);
