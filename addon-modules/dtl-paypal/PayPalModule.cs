@@ -796,9 +796,15 @@ namespace DeepThink.PayPal
                     }
                     else // UserAccount was null
                     {
+                        // Originally aborted the whole FirstRegionLoaded() here (the original author's own comment
+                        // above explains why - "it is important when dealing with financial matters to error check
+                        // everything") - but that return also skipped AddHTTPHandler("/dtlpp/"...)/m_active=true
+                        // below, silently disabling the ENTIRE PayPal module (for every correctly-configured user
+                        // too) over one bad name/typo in [PayPal Users]. Skip just this one bad entry instead -
+                        // still loud (Error-level log), but no longer takes down payments for everyone else.
                         m_log.Error("[PayPal] Error, User Profile not found for " + user +
-                                    ". Check the spelling and/or any associated grid services. Aborting.");
-                        return;
+                                    ". Check the spelling and/or any associated grid services. Skipping this entry.");
+                        continue;
                     }
                 }
             }
