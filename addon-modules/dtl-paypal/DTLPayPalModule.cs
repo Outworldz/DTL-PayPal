@@ -61,6 +61,15 @@ namespace DeepThink.PayPal
 
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private readonly Dictionary<UUID,string> m_usersemail = new Dictionary<UUID, string>();
+        private readonly Dictionary<UUID,string> m_groupsemail = new Dictionary<UUID, string>();
+
+        // Fetch a user's PayPal receiver email from the grid's User service (their profile email) when no explicit
+        // [PayPal Users] entry exists for them - ported from Mod-PayPal (github.com/SnoopyPfeffer/Mod-PayPal).
+        private bool m_allowGridEmails;
+
+        // Allow group-owned objects (OwnerID == GroupID) to pay out to a [PayPal Groups] receiver email instead of
+        // the object owner's - ported from Mod-PayPal.
+        private bool m_allowGroups;
 
         private IConfigSource m_config;
 
@@ -131,13 +140,25 @@ namespace DeepThink.PayPal
                     return;
                 }
 
-                txn = new PayPalTransaction(e.sender, sop.OwnerID, m_usersemail[sop.OwnerID], e.amount,
+                if (!TryGetReceiverEmail(sop.OwnerID, sop.GroupID, out string sopEmail))
+                {
+                    m_log.Warn("[DTL PayPal] No PayPal receiver email found for owner " + sop.OwnerID + ". Aborting transaction.");
+                    return;
+                }
+
+                txn = new PayPalTransaction(e.sender, sop.OwnerID, sopEmail, e.amount,
                                             scene, e.receiver, e.description + "T:" + e.transactiontype, PayPalTransaction.InternalTransactionType.Payment);
             }
             else
             {
                 // Payment to a user.
-                txn = new PayPalTransaction(e.sender, e.receiver, m_usersemail[e.receiver], e.amount,
+                if (!TryGetReceiverEmail(e.receiver, UUID.Zero, out string receiverEmail))
+                {
+                    m_log.Warn("[DTL PayPal] No PayPal receiver email found for " + e.receiver + ". Aborting transaction.");
+                    return;
+                }
+
+                txn = new PayPalTransaction(e.sender, e.receiver, receiverEmail, e.amount,
                                             scene, e.description + "T:" + e.transactiontype, PayPalTransaction.InternalTransactionType.Payment);
             }
 
@@ -214,6 +235,35 @@ namespace DeepThink.PayPal
         static decimal ConvertAmountToCurrency(int amount)
         {
             return amount/(decimal) 100;
+        }
+
+        /// <summary>
+        /// Resolves the PayPal receiver email for a payment recipient. Group-owned objects (OwnerID == GroupID)
+        /// are checked against [PayPal Groups] first when AllowGroups is on - ported from Mod-PayPal
+        /// (github.com/SnoopyPfeffer/Mod-PayPal). Falls back to the grid's User service profile email when
+        /// AllowGridEmails is on and no explicit [PayPal Users] entry exists for the recipient. Returns false
+        /// (rather than throwing, as the original raw dictionary indexer did) when no usable email can be found.
+        /// </summary>
+        internal bool TryGetReceiverEmail(UUID ownerID, UUID groupID, out string email)
+        {
+            if (m_allowGroups && groupID != UUID.Zero && ownerID == groupID && m_groupsemail.TryGetValue(groupID, out email))
+                return true;
+
+            if (m_usersemail.TryGetValue(ownerID, out email))
+                return true;
+
+            if (m_allowGridEmails)
+            {
+                UserAccount account = m_scenes[0].UserAccountService.GetUserAccount(m_scenes[0].RegionInfo.ScopeID, ownerID);
+                if (account != null && DTLPayPalHelpers.IsValidEmail(account.Email))
+                {
+                    email = account.Email;
+                    return true;
+                }
+            }
+
+            email = null;
+            return false;
         }
 
         public Hashtable DtlUserPage(Hashtable request)
@@ -548,7 +598,13 @@ namespace DeepThink.PayPal
                 return;
             }
 
-            PayPalTransaction txn = new PayPalTransaction(agentID, sop.OwnerID, m_usersemail[sop.OwnerID], salePrice,
+            if (!TryGetReceiverEmail(sop.OwnerID, sop.GroupID, out string sopEmail))
+            {
+                m_log.Warn("[DTL PayPal] No PayPal receiver email found for owner " + sop.OwnerID + ". Aborting transaction.");
+                return;
+            }
+
+            PayPalTransaction txn = new PayPalTransaction(agentID, sop.OwnerID, sopEmail, salePrice,
                                                           scene, sop.UUID,
                                                           "Item Purchase - " + sop.Name + " (" + saleType + ")",
                                                           PayPalTransaction.InternalTransactionType.Purchase, categoryID,
@@ -608,7 +664,7 @@ namespace DeepThink.PayPal
 
         public void PostInitialise()
         {
-            IConfig config = m_config.Configs["DTL PayPal"];
+            IConfig config = m_config.Configs["PayPal"];
 
             if (null == config)
             {
@@ -624,6 +680,9 @@ namespace DeepThink.PayPal
                 return;
             }
 
+            m_allowGridEmails = config.GetBoolean("AllowGridEmails", false);
+            m_allowGroups = config.GetBoolean("AllowGroups", false);
+
             m_log.Warn("[DTL PayPal] Loaded.");
 
 
@@ -632,64 +691,100 @@ namespace DeepThink.PayPal
 
         public void FirstRegionLoaded()
         {
-            IConfig users = m_config.Configs["DTL PayPal Users"];
+            IConfig users = m_config.Configs["PayPal Users"];
 
             if (null == users)
             {
                 m_log.Warn("[DTL PayPal] No users specified, skipping load.");
-                return;
+            }
+            else
+            {
+                IUserAccountService userAccountService = m_scenes[0].UserAccountService;
+                UUID scopeID = m_scenes[0].RegionInfo.ScopeID;
+
+                // This aborts at the slightest provocation
+                // We realise this may be inconvenient for you,
+                // however it is important when dealing with
+                // financial matters to error check everything.
+
+                foreach (string user in users.GetKeys())
+                {
+                    UUID tmp;
+                    if(UUID.TryParse(user,out tmp))
+                    {
+                        m_log.Debug("[DTL PayPal] User is UUID, skipping lookup...");
+                        string email = users.GetString(user);
+                        m_usersemail[tmp] = email;
+                        continue;
+                    }
+
+                    m_log.Debug("[DTL PayPal] Looking up UUID for " + user);
+                    string[] username = user.Split(new[] { ' ' }, 2);
+                    UserAccount upd = userAccountService.GetUserAccount(scopeID, username[0], username[1]);
+
+                    if (upd != null)
+                    {
+
+                        m_log.Debug("[DTL PayPal] Found, " + user + " = " + upd.PrincipalID);
+                        string email = users.GetString(user);
+
+                        if (string.IsNullOrEmpty(email))
+                        {
+                            m_log.Error("[DTL PayPal] PayPal email address not set for " + user +
+                                        " in [PayPal Users] config section. Skipping.");
+                            // Did abort here, but since the users are being added to the list regardless...
+                        }
+
+                        if (!DTLPayPalHelpers.IsValidEmail(email))
+                        {
+                            m_log.Error("[DTL PayPal] PayPal email address not valid for " + user +
+                                        " in [PayPal Users] config section. Skipping.");
+                            // See comment above.
+                        }
+
+                        m_usersemail[upd.PrincipalID] = email;
+                    }
+                    else // UserAccount was null
+                    {
+                        m_log.Error("[DTL PayPal] Error, User Profile not found for " + user +
+                                    ". Check the spelling and/or any associated grid services. Aborting.");
+                        return;
+                    }
+                }
             }
 
-            IUserAccountService userAccountService = m_scenes[0].UserAccountService;
-            UUID scopeID = m_scenes[0].RegionInfo.ScopeID;
-
-            // This aborts at the slightest provocation
-            // We realise this may be inconvenient for you,
-            // however it is important when dealing with
-            // financial matters to error check everything.
-
-            foreach (string user in users.GetKeys())
+            if (m_allowGroups)
             {
-                UUID tmp;
-                if(UUID.TryParse(user,out tmp))
+                IConfig groups = m_config.Configs["PayPal Groups"];
+
+                if (null == groups)
                 {
-                    m_log.Debug("[DTL PayPal] User is UUID, skipping lookup...");
-                    string email = users.GetString(user);
-                    m_usersemail[tmp] = email;
-                    continue;
+                    m_log.Warn("[DTL PayPal] AllowGroups is enabled but no [PayPal Groups] section found, skipping load.");
                 }
-
-                m_log.Debug("[DTL PayPal] Looking up UUID for " + user);
-                string[] username = user.Split(new[] { ' ' }, 2);
-                UserAccount upd = userAccountService.GetUserAccount(scopeID, username[0], username[1]);
-
-                if (upd != null)
+                else
                 {
-
-                    m_log.Debug("[DTL PayPal] Found, " + user + " = " + upd.PrincipalID);
-                    string email = users.GetString(user);
-
-                    if (string.IsNullOrEmpty(email))
+                    // Group entries are keyed by group UUID directly (there is no name-based lookup service for
+                    // groups the way UserAccountService provides one for avatars), matching how the [PayPal Groups]
+                    // section is documented/generated: "GroupUUID=email".
+                    foreach (string group in groups.GetKeys())
                     {
-                        m_log.Error("[DTL PayPal] PayPal email address not set for " + user +
-                                    " in [DTL PayPal Users] config section. Skipping.");
-                        // Did abort here, but since the users are being added to the list regardless...
-                    }
+                        if (!UUID.TryParse(group, out UUID groupID))
+                        {
+                            m_log.Error("[DTL PayPal] '" + group + "' in [PayPal Groups] is not a valid group UUID. Skipping.");
+                            continue;
+                        }
 
-                    if (!DTLPayPalHelpers.IsValidEmail(email))
-                    {
-                        m_log.Error("[DTL PayPal] PayPal email address not valid for " + user +
-                                    " in [DTL PayPal Users] config section. Skipping.");
-                        // See comment above.
-                    }
+                        string email = groups.GetString(group);
 
-                    m_usersemail[upd.PrincipalID] = email;
-                }
-                else // UserAccount was null
-                {
-                    m_log.Error("[DTL PayPal] Error, User Profile not found for " + user +
-                                ". Check the spelling and/or any associated grid services. Aborting.");
-                    return;
+                        if (string.IsNullOrEmpty(email) || !DTLPayPalHelpers.IsValidEmail(email))
+                        {
+                            m_log.Error("[DTL PayPal] PayPal email address not valid for group " + group +
+                                        " in [PayPal Groups] config section. Skipping.");
+                            continue;
+                        }
+
+                        m_groupsemail[groupID] = email;
+                    }
                 }
             }
 
