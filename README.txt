@@ -33,6 +33,9 @@ via PayPal IPN of the payment - and will process the original request.
 Configuring this module:
 Add the following sections to your OpenSim.ini file
 
+[Economy] (or [Startup], not both - see below)
+economymodule = PayPal
+
 [PayPal]
 Enabled = true
 AllowGridEmails = false
@@ -62,3 +65,15 @@ here.
 How the PayPal Groups section is formatted (only used when AllowGroups is
 true): one line per group, keyed by the group's UUID, mapping to the PayPal
 receiver email that group-owned objects pay out to.
+
+Selecting PayPal as the active currency module:
+Only one money module should ever be active on a given region (e.g. PayPal,
+Gloebit, or the free BetaGridLikeMoneyModule) - if more than one registers
+itself, OpenSim uses whichever happens to load first, which is not something
+you want to leave to chance. To make sure PayPal is the one that wins, set
+"economymodule = PayPal" in either [Startup] or [Economy] (not both - if
+they disagree, neither module will consider itself selected). PayPal will
+only activate when BOTH "economymodule = PayPal" AND "[PayPal] Enabled =
+true" are set; if you only set [PayPal] Enabled and leave economymodule
+unset or pointing elsewhere, PayPal will log that it was not selected and
+stay inactive.

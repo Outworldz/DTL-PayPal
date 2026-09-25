@@ -674,6 +674,49 @@ namespace DeepThink.PayPal
 
             m_ppurl = config.GetString("PayPalURL", m_ppurl);
 
+            // Determine what the sim's economymodule setting is - mirrors GloebitMoneyModule's own check. Two money
+            // modules should never be enabled on the same region: Scene.RegisterModuleInterface<IMoneyModule> is
+            // first-registration-wins (see SceneBase.cs), so without this check PayPal and Gloebit could silently
+            // race for the slot depending on Mono.Addins region-module load order instead of respecting the admin's
+            // configured choice.
+            IConfig startupConfig = m_config.Configs["Startup"];
+            IConfig economyConfig = m_config.Configs["Economy"];
+            string startupEconomyModule = startupConfig?.GetString("economymodule", string.Empty) ?? string.Empty;
+            string economyEconomyModule = economyConfig?.GetString("economymodule", string.Empty) ?? string.Empty;
+
+            string economyModule;
+            if (string.IsNullOrEmpty(startupEconomyModule) && string.IsNullOrEmpty(economyEconomyModule))
+            {
+                m_log.Warn("[PayPal] No sim-wide economymodule is set. Defaulting to not-selected.");
+                economyModule = string.Empty;
+            }
+            else if (!string.IsNullOrEmpty(startupEconomyModule) && !string.IsNullOrEmpty(economyEconomyModule))
+            {
+                if (startupEconomyModule != economyEconomyModule)
+                {
+                    m_log.Error("[PayPal] economymodule in [Startup] does not match setting in [Economy]. Sim-wide setting is undefined.");
+                    economyModule = string.Empty;
+                }
+                else
+                {
+                    economyModule = startupEconomyModule;
+                }
+            }
+            else if (!string.IsNullOrEmpty(startupEconomyModule))
+            {
+                economyModule = startupEconomyModule;
+            }
+            else
+            {
+                economyModule = economyEconomyModule;
+            }
+
+            if (economyModule != "PayPal")
+            {
+                m_log.Info("[PayPal] Not selected as sim economymodule. Skipping. (to enable set \"Enabled = true\" in [PayPal] and \"economymodule = PayPal\" in [Economy])");
+                return;
+            }
+
             if(!config.GetBoolean("Enabled",false))
             {
                 m_log.Info("[PayPal] Not enabled.");
