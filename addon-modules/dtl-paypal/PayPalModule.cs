@@ -43,12 +43,14 @@ using Nwc.XmlRpc;
 
 using Mono.Addins; // I hate you Mono.Addins
 
-[assembly: Addin("PayPal","0.1")]
-[assembly: AddinDependency("OpenSim","0.5")]
+[assembly: Addin("PayPal", "0.1")]
+[assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
+[assembly: AddinDescription("OpenSim Addin for PayPal currency module")]
+[assembly: AddinAuthor("DeepThink Pty Ltd")]
 
 namespace DeepThink.PayPal
 {
-    [Extension(Path="/OpenSim/RegionModules",NodeName="RegionModule")]
+    [Extension(Path="/OpenSim/RegionModules",NodeName="RegionModule", Id = "PayPalModule")]
     public class PayPalModule : ISharedRegionModule, IMoneyModule
     {
         private string m_ppurl = "www.paypal.com"; // Change to www.sandbox.paypal.com for testing.
