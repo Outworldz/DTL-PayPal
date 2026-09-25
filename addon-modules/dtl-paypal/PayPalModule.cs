@@ -554,6 +554,8 @@ namespace DeepThink.PayPal
                 UUID sessionID, UUID groupID, UUID categoryID,
                 uint localID, byte saleType, int salePrice)
         {
+            m_log.Debug("[PayPal] ObjectBuy localID=" + localID + " saleType=" + saleType + " salePrice=" + salePrice + " m_active=" + m_active);
+
             if (!m_active)
                 return;
 
@@ -634,12 +636,15 @@ namespace DeepThink.PayPal
             SceneObjectGroup group = task.ParentGroup;
             SceneObjectPart root = group.RootPart;
 
+            m_log.Debug("[PayPal] requestPayPrice objectID=" + objectID + " root.PayPrice=[" + string.Join(",", root.PayPrice) + "]");
+
             client.SendPayPrice(objectID, root.PayPrice);
         }
 
         static void OnMoneyBalanceRequest(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
         {
             const int returnfunds = 1000000;
+            m_log.Debug("[PayPal] OnMoneyBalanceRequest agentID=" + agentID + " sending balance=" + returnfunds);
             client.SendMoneyBalance(TransactionID, true, Array.Empty<byte>(), returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
         }
 
