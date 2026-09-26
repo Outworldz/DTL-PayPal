@@ -79,6 +79,14 @@ namespace DeepThink.PayPal
         // unit) with our own clear message avoids that. 0 (the default) means no minimum is enforced.
         private int m_minimumAmountCents;
 
+        // Fred hand-added [PayPal] BalanceOnEntry=true to the real proto, citing the original module author's own
+        // notes (confirmed: SnoopyPfeffer's write-up at
+        // https://snoopypfeffer.wordpress.com/2009/11/18/paypal-money-module/ states "It is important that you use
+        // [this] ... to ensure that the balance is sent each time an avatar enters the region", since without it a
+        // balance can appear to vanish across a teleport/hypergrid jump). Ported from Mod-PayPal's own
+        // MakeRootAgent()/OnMakeRootAgent hook (github.com/SnoopyPfeffer/Mod-PayPal).
+        private bool m_balanceOnEntry;
+
         private IConfigSource m_config;
 
         private readonly List<Scene> m_scenes = new List<Scene>();
@@ -660,7 +668,20 @@ namespace DeepThink.PayPal
             {
                 scene.EventManager.OnMoneyTransfer += EventManager_OnMoneyTransfer;
                 scene.EventManager.OnNewClient += EventManager_OnNewClient;
+                scene.EventManager.OnMakeRootAgent += MakeRootAgent;
             }
+        }
+
+        // BalanceOnEntry (see the m_balanceOnEntry field's doc comment) - ported from Mod-PayPal's own
+        // MakeRootAgent()/OnMakeRootAgent hook. Fires whenever an avatar becomes a root agent in this scene, i.e.
+        // on login and on every teleport/region-crossing arrival - without this, a balance display can appear to
+        // vanish after a teleport until the viewer happens to re-request it on its own.
+        private void MakeRootAgent(ScenePresence avatar)
+        {
+            if (!m_balanceOnEntry)
+                return;
+
+            OnMoneyBalanceRequest(avatar.ControllingClient, avatar.UUID, UUID.Zero, UUID.Random());
         }
 
         #region Basic Plumbing of Currency Events
@@ -886,6 +907,8 @@ namespace DeepThink.PayPal
             // internally everything is tracked in cents (see ConvertAmountToCurrency), so convert once here.
             float minimumAmountDollars = config.GetFloat("MinimumAmount", 0);
             m_minimumAmountCents = (int)Math.Round(minimumAmountDollars * 100);
+
+            m_balanceOnEntry = config.GetBoolean("BalanceOnEntry", false);
 
             m_log.Warn("[PayPal] Loaded.");
 
