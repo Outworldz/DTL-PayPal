@@ -440,29 +440,43 @@ namespace DeepThink.PayPal
         // logic itself.
         public Hashtable PayPalReturnPage(Hashtable request)
         {
-            Hashtable reply = new Hashtable();
-            reply["int_response_code"] = 200;
-            reply["str_response_string"] =
+            return StaticHtmlPage("paypal-return-template.htm",
                 "<html><head><title>Payment Complete</title></head><body>" +
                 "<h1>Thank you!</h1>" +
                 "<p>Your PayPal payment has been submitted. It may take a few moments for the item or funds to " +
                 "arrive in-world once PayPal confirms the transaction.</p>" +
                 "<p>You may close this window and return to the viewer.</p>" +
-                "</body></html>";
-            reply["content_type"] = "text/html";
-            return reply;
+                "</body></html>");
         }
 
         public Hashtable PayPalCancelPage(Hashtable request)
         {
-            Hashtable reply = new Hashtable();
-            reply["int_response_code"] = 200;
-            reply["str_response_string"] =
+            return StaticHtmlPage("paypal-cancel-template.htm",
                 "<html><head><title>Payment Cancelled</title></head><body>" +
                 "<h1>Payment Cancelled</h1>" +
                 "<p>Your PayPal payment was not completed. No funds were transferred and no item was delivered.</p>" +
                 "<p>You may close this window and return to the viewer.</p>" +
-                "</body></html>";
+                "</body></html>");
+        }
+
+        /// <summary>Serves a static HTML template file from the bin/ working directory (same location/pattern as
+        /// paypal-template.htm), falling back to a plain inline page if the file is missing.</summary>
+        private static Hashtable StaticHtmlPage(string templateFileName, string fallbackHtml)
+        {
+            string html;
+            try
+            {
+                html = File.ReadAllText(templateFileName);
+            }
+            catch (IOException)
+            {
+                m_log.Error("[PayPal] Unable to load template file " + templateFileName + ".");
+                html = fallbackHtml;
+            }
+
+            Hashtable reply = new Hashtable();
+            reply["int_response_code"] = 200;
+            reply["str_response_string"] = html;
             reply["content_type"] = "text/html";
             return reply;
         }

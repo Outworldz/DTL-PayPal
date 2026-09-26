@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payment Cancelled</title>
+<style>
+    body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #f5f8fc, #e7f0fa);
+        font-family: Arial, Helvetica, sans-serif;
+        color: #2c2e2f;
+    }
+
+    .card {
+        width: 90%;
+        max-width: 520px;
+        background: #ffffff;
+        padding: 42px 38px;
+        border-radius: 14px;
+        box-shadow: 0 10px 30px rgba(0, 48, 135, 0.14);
+        text-align: center;
+        border-top: 5px solid #cc3333;
+    }
+
+    .check {
+        width: 62px;
+        height: 62px;
+        margin: 0 auto 20px;
+        border-radius: 50%;
+        background: #cc3333;
+        color: white;
+        font-size: 38px;
+        line-height: 62px;
+        font-weight: bold;
+    }
+
+    h1 {
+        margin: 0 0 18px;
+        color: #003087;
+        font-size: 30px;
+    }
+
+    p {
+        margin: 12px 0;
+        font-size: 16px;
+        line-height: 1.6;
+        color: #515354;
+    }
+
+    .return {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid #e3e8ee;
+        color: #0070ba;
+        font-weight: bold;
+    }
+</style>
+</head>
+
+<body>
+    <div class="card">
+        <div class="check">&#10007;</div>
+
+        <h1>Payment Cancelled</h1>
+
+        <p>
+            Your PayPal payment was not completed.
+            No funds were transferred and no item was delivered.
+        </p>
+
+        <p class="return">
+            You may close this window and return to the viewer.
+        </p>
+    </div>
+</body>
+</html>
