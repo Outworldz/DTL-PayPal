@@ -44,6 +44,10 @@ AllowGroups = false
 ; instead of letting the buyer hit a confusing error on PayPal's own checkout page for amounts too small to
 ; cover PayPal's transaction fees. 0 (the default) means no minimum is enforced.
 MinimumAmount = 0
+; Re-send the avatar's balance every time they become a root agent (login, teleport, region crossing).
+; Without this, a balance display can appear to vanish after a teleport until the viewer happens to
+; re-request it on its own. Default is off.
+BalanceOnEntry = false
 
 [PayPal Users]
 User Name=paypal@email.com

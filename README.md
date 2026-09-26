@@ -67,6 +67,11 @@ AllowGroups = false
 ; small to cover PayPal's own transaction fees. 0 (the default) means no minimum is enforced.
 MinimumAmount = 0
 
+; Re-send the avatar's balance every time they become a root agent in the region - on login, and on every
+; teleport/region-crossing arrival. Without this, a balance display can appear to vanish after a teleport
+; until the viewer happens to re-request it on its own. Default is off.
+BalanceOnEntry = false
+
 [PayPal Users]
 Avatar Name=paypal@email.com
 Other Avatar=another.paypal@email.com
