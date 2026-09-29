@@ -61,6 +61,11 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="EmailValidation" >
+      <Name>EmailValidation</Name>
+      <HintPath>..\..\..\..\bin\EmailValidation.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="log4net" >
       <Name>log4net</Name>
       <HintPath>..\..\..\..\bin\log4net.dll</HintPath>

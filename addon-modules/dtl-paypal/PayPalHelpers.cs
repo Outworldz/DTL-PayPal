@@ -30,36 +30,28 @@ namespace DeepThink.PayPal
     public static class PayPalHelpers
     {
         /// <summary>
-        /// method for determining is the user provided a valid email address
-        /// We use regular expressions in this check, as it is a more thorough
-        /// way of checking the address provided
+        /// Whether this is a properly formed email address. It checks the form only; PayPal itself decides whether
+        /// the account exists.
+        ///
+        /// The work is done by the EmailValidation library (NuGet package "EmailValidation" by Jeffrey Stedfast,
+        /// MIT licence), which follows the mail standard, RFC 5322. EmailValidation.dll must sit in bin beside
+        /// PayPal.dll.
+        ///
+        /// The hand-written pattern this replaces allowed only letters, digits, dots and hyphens before the @, and
+        /// only a short fixed list of endings (com, net, org ...) or any two letters. It turned away ordinary
+        /// addresses such as deb_scott@outlook.com (underscore), name+tag@gmail.com (plus sign) and anything at
+        /// .live, .online, .app or .shop.
         /// </summary>
         /// <param name="email">email address to validate</param>
         /// <returns>true is valid, false if not valid</returns>
-        /// <remarks>http://www.dreamincode.net/code/snippet1374.htm</remarks>
         public static bool IsValidEmail(string email)
         {
-            //regular expression pattern for valid email
-            //addresses, allows for the following domains:
-            //com,edu,info,gov,int,mil,net,org,biz,name,museum,coop,aero,pro,tv
-            const string pattern = @"^[-a-zA-Z0-9][-.a-zA-Z0-9]*@[-.a-zA-Z0-9]+(\.[-.a-zA-Z0-9]+)*\.(com|edu|info|gov|int|mil|net|org|biz|name|museum|coop|aero|pro|tv|[a-zA-Z]{2})$";
-            //Regular expression object
-            Regex check = new Regex(pattern, RegexOptions.IgnorePatternWhitespace);
-            //boolean variable to return to calling method
-            bool valid = false;
+            if (string.IsNullOrWhiteSpace(email))
+                return false;
 
-            //make sure an email address was provided
-            if (string.IsNullOrEmpty(email))
-            {
-                valid = false;
-            }
-            else
-            {
-                //use IsMatch to validate the address
-                valid = check.IsMatch(email);
-            }
-            //return the value to the calling method
-            return valid;
+            // allowTopLevelDomains false: "someone@localhost" is refused, the part after the @ needs a dot.
+            // allowInternational false: plain ASCII addresses only.
+            return EmailValidation.EmailValidator.Validate(email, false, false);
         }
     }
 }

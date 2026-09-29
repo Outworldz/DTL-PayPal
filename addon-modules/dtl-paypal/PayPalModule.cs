@@ -941,6 +941,14 @@ namespace DeepThink.PayPal
                     {
                         m_log.Debug("[PayPal] User is UUID, skipping lookup...");
                         string email = users.GetString(user);
+
+                        if (!PayPalHelpers.IsValidEmail(email))
+                        {
+                            m_log.Error("[PayPal] PayPal email address not valid for " + user +
+                                        " in [PayPal Users] config section. Skipping.");
+                            continue;
+                        }
+
                         m_usersemail[tmp] = email;
                         continue;
                     }
@@ -955,18 +963,22 @@ namespace DeepThink.PayPal
                         m_log.Debug("[PayPal] Found, " + user + " = " + upd.PrincipalID);
                         string email = users.GetString(user);
 
+                        // Both messages below said "Skipping" while the code went on to register the address
+                        // anyway. They now do what they say. A user left out here can still be paid through the
+                        // email on their grid account when AllowGridEmails is on (see TryGetReceiverEmail), which
+                        // is a better outcome than sending a payment to an address known to be malformed.
                         if (string.IsNullOrEmpty(email))
                         {
                             m_log.Error("[PayPal] PayPal email address not set for " + user +
                                         " in [PayPal Users] config section. Skipping.");
-                            // Did abort here, but since the users are being added to the list regardless...
+                            continue;
                         }
 
                         if (!PayPalHelpers.IsValidEmail(email))
                         {
                             m_log.Error("[PayPal] PayPal email address not valid for " + user +
                                         " in [PayPal Users] config section. Skipping.");
-                            // See comment above.
+                            continue;
                         }
 
                         m_usersemail[upd.PrincipalID] = email;

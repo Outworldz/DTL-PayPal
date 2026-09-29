@@ -24,6 +24,8 @@
   <Reference name="OpenSim.Server.Base.dll"/>
   <Reference name="OpenSim.Server.Base.dll"/>
   <Reference name="XMLRPC.dll"/>
+  <!-- Email address checking. NuGet package EmailValidation 1.4.0, lib/net8.0. A copy is in "files for bin dir". -->
+  <Reference name="EmailValidation.dll"/>
  
   <!-- To allow regions to have mono addins -->
   <Reference name="Mono.Addins.dll" />
